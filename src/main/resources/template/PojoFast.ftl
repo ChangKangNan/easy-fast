@@ -6,7 +6,7 @@ package ${table.pojoPackagePath}.pojo.fast;
 </#list>
 import sh.pd.lx.fast.easyfast.compent.BasePojo;
 import sh.pd.lx.fast.easyfast.compent.Criteria;
-import sh.pd.lx.fast.easyfast.pojo.${PojoName};
+import ${table.pojoPackagePath}.pojo.${PojoName};
 
 /**
 * @author kangnan.chang
