@@ -46,7 +46,7 @@ public class CreateTemplateFile {
             try {
                 // step2 获取模版路径
              //   configuration.setDirectoryForTemplateLoading(new File(TEMPLATE_PATH));
-                configuration.setClassForTemplateLoading(CreateTemplateFile.class.getClass(),"/template");
+                configuration.setClassLoaderForTemplateLoading(CreateTemplateFile.class.getClass().getClassLoader(),"/template");
                 configuration.setDefaultEncoding("UTF-8");
                 configuration.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
                 // step3 创建数据模型
