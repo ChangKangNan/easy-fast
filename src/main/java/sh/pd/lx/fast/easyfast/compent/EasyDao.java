@@ -6,6 +6,7 @@ import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.spring.SpringUtil;
+import cn.hutool.json.JSONUtil;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
@@ -83,8 +84,7 @@ public class EasyDao<T> {
     public  String fetchUpdateSql(Mapper<?> mapper){
         String updateSQL = "UPDATE " + mapper.tableName + " SET "
                 + String.join(", ",
-                mapper.properties.stream().filter(AccessibleProperty::isNotId).map(p -> p.columnName + " = ?").toArray(String[]::new))
-                + " WHERE " + mapper.id.columnName + " = ?";
+                mapper.properties.stream().filter(AccessibleProperty::isNotId).map(p -> p.columnName + " = ?").toArray(String[]::new));
         return updateSQL;
     }
     <T> Mapper<T> getMapper(Class<T> clazz) {
@@ -118,27 +118,93 @@ public class EasyDao<T> {
                         if (contains) {
                             replacement = replace;
                         } else {
-                            replacement = ", " + prop.columnName + " = ?";
+                            replacement = ",  " + prop.columnName + " = ?";
                         }
                         String format = StrUtil.replace(updateSQL, replacement, "");
                         updateSQL = format;
                     }
                 }
             }
-            Object invoke = mapper.id.getter.invoke(bean);
-            if (ObjectUtil.isEmpty(invoke)) {
-                throw new RuntimeException("未传入主键!");
+            List<Condition> conditionList = criteria.conditionList;
+            SqlLogUtil.getInstance().info(JSONUtil.toJsonStr(conditionList));
+            if(CollUtil.isNotEmpty(conditionList)){
+                StringBuilder sb=new StringBuilder(updateSQL);
+                sb.append(Action.Blank);
+                sb.append(WHERE);
+                sb.append(Action.Blank);
+                for (Condition condition : conditionList) {
+                    if (!condition.link.equals(Link.OrderBy.expression)) {
+                        sb.append(Way.AND);
+                        sb.append(Action.Blank);
+                        sb.append(condition.columnName);
+                        sb.append(Action.Blank);
+                        sb.append(condition.link);
+                        sb.append(Action.Blank);
+                        if (condition.value != null) {
+                            if (ArrayUtil.isArray(condition.value)) {
+                                sb.append(Action.LeftBracket);
+                                Object[] wrap = ArrayUtil.wrap(condition.value);
+                                for (Object o : wrap) {
+                                    if (o instanceof String || o instanceof Date) {
+                                        sb.append("'");
+                                    }
+                                    if (o instanceof Date) {
+                                        sb.append(DateUtil.format((Date) o, "yyyy-MM-dd"));
+                                    } else {
+                                        sb.append(o);
+                                    }
+                                    if (o instanceof String || o instanceof Date) {
+                                        sb.append("'");
+                                    }
+                                    sb.append(",");
+                                }
+                                sb = new StringBuilder(sb.substring(0, sb.length() - 1));
+                                sb.append(Action.RightBracket);
+                            } else {
+                                if (condition.value instanceof String || condition.value instanceof Date) {
+                                    sb.append("'");
+                                }
+                                if (StrUtil.equalsAny(condition.link, Link.Like.name, Link.NotLike.name)) {
+                                    sb.append("%");
+                                }
+                                if (condition.value instanceof Date) {
+                                    sb.append(DateUtil.format((Date) condition.value, "yyyy-MM-dd"));
+                                } else {
+                                    sb.append(condition.value);
+                                }
+                                if (StrUtil.equalsAny(condition.link, Link.Like.name, Link.NotLike.name)) {
+                                    sb.append("%");
+                                }
+                                if (condition.value instanceof String || condition.value instanceof Date) {
+                                    sb.append("'");
+                                }
+                            }
+                        }
+                    }
+                }
+                updateSQL=sb.toString();
+                SqlLogUtil.getInstance().info(updateSQL);
             }
-            args[n] = invoke;
-            Object[] argsFinal = new Object[size - dCount];
+            int idC=0;
+            if(!StrUtil.contains(updateSQL, WHERE)){
+                Object invoke = mapper.id.getter.invoke(bean);
+                if (ObjectUtil.isEmpty(invoke)) {
+                    throw new RuntimeException("未传入主键!");
+                }
+                updateSQL=updateSQL+" WHERE "+mapper.id.columnName+" = ?";
+                args[n] = invoke;
+            }else {
+                idC=1;
+            }
+            Object[] argsFinal = new Object[size - dCount-idC];
             for (int i = 0; i <argsFinal.length; i++) {
                 argsFinal[i] = args[i];
             }
             if (args.length == 1) {
                 throw new RuntimeException("无更新属性!");
             }
-            jdbcTemplate.update(updateSQL, argsFinal);
             SqlLogUtil.getInstance().log(updateSQL,argsFinal,UPDATE);
+            jdbcTemplate.update(updateSQL, argsFinal);
         } catch (ReflectiveOperationException e) {
             e.printStackTrace();
         }
@@ -151,6 +217,7 @@ public class EasyDao<T> {
     public void updateOverwrite(T bean) {
         try {
             Mapper<?> mapper = getMapper(bean.getClass());
+            int size = mapper.properties.size()+1;
             String updateSQL=fetchUpdateSql(mapper);
             Object[] args = new Object[mapper.properties.size()+1];
             int n = 0;
@@ -161,9 +228,86 @@ public class EasyDao<T> {
                     n++;
                 }
             }
-            args[n] = mapper.id.getter.invoke(bean);
-            jdbcTemplate.update(updateSQL, args);
-            SqlLogUtil.getInstance().log(updateSQL,args,UPDATE);
+            List<Condition> conditionList = criteria.conditionList;
+            SqlLogUtil.getInstance().info(JSONUtil.toJsonStr(conditionList));
+            if(CollUtil.isNotEmpty(conditionList)){
+                StringBuilder sb=new StringBuilder(updateSQL);
+                sb.append(Action.Blank);
+                sb.append(WHERE);
+                sb.append(Action.Blank);
+                for (Condition condition : conditionList) {
+                    if (!condition.link.equals(Link.OrderBy.expression)) {
+                        sb.append(Way.AND);
+                        sb.append(Action.Blank);
+                        sb.append(condition.columnName);
+                        sb.append(Action.Blank);
+                        sb.append(condition.link);
+                        sb.append(Action.Blank);
+                        if (condition.value != null) {
+                            if (ArrayUtil.isArray(condition.value)) {
+                                sb.append(Action.LeftBracket);
+                                Object[] wrap = ArrayUtil.wrap(condition.value);
+                                for (Object o : wrap) {
+                                    if (o instanceof String || o instanceof Date) {
+                                        sb.append("'");
+                                    }
+                                    if (o instanceof Date) {
+                                        sb.append(DateUtil.format((Date) o, "yyyy-MM-dd"));
+                                    } else {
+                                        sb.append(o);
+                                    }
+                                    if (o instanceof String || o instanceof Date) {
+                                        sb.append("'");
+                                    }
+                                    sb.append(",");
+                                }
+                                sb = new StringBuilder(sb.substring(0, sb.length() - 1));
+                                sb.append(Action.RightBracket);
+                            } else {
+                                if (condition.value instanceof String || condition.value instanceof Date) {
+                                    sb.append("'");
+                                }
+                                if (StrUtil.equalsAny(condition.link, Link.Like.name, Link.NotLike.name)) {
+                                    sb.append("%");
+                                }
+                                if (condition.value instanceof Date) {
+                                    sb.append(DateUtil.format((Date) condition.value, "yyyy-MM-dd"));
+                                } else {
+                                    sb.append(condition.value);
+                                }
+                                if (StrUtil.equalsAny(condition.link, Link.Like.name, Link.NotLike.name)) {
+                                    sb.append("%");
+                                }
+                                if (condition.value instanceof String || condition.value instanceof Date) {
+                                    sb.append("'");
+                                }
+                            }
+                        }
+                    }
+                }
+                updateSQL=sb.toString();
+                SqlLogUtil.getInstance().info(updateSQL);
+            }
+            int idC=0;
+            if(!StrUtil.contains(updateSQL, WHERE)){
+                Object invoke = mapper.id.getter.invoke(bean);
+                if (ObjectUtil.isEmpty(invoke)) {
+                    throw new RuntimeException("未传入主键!");
+                }
+                updateSQL=updateSQL+" WHERE "+mapper.id.columnName+" = ?";
+                args[n] = invoke;
+            }else {
+                idC=1;
+            }
+            Object[] argsFinal = new Object[size -idC];
+            for (int i = 0; i <argsFinal.length; i++) {
+                argsFinal[i] = args[i];
+            }
+            if (args.length == 1) {
+                throw new RuntimeException("无更新属性!");
+            }
+            jdbcTemplate.update(updateSQL, argsFinal);
+            SqlLogUtil.getInstance().log(updateSQL,argsFinal,UPDATE);
         } catch (ReflectiveOperationException e) {
             e.printStackTrace();
         }

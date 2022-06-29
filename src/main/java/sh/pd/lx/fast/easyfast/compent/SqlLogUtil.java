@@ -45,7 +45,9 @@ public class SqlLogUtil {
                     sqlBuilder.append(split[i+1]);
                 }
             }
-
+            if(parameters.length<split.length){
+                sqlBuilder.append(split[parameters.length]);
+            }
             logger.info("Executing SQL " + action + " [" + sqlBuilder.toString() + "]");
         }
     }
